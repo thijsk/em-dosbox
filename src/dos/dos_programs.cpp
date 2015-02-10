@@ -39,6 +39,10 @@
 #include "inout.h"
 #include "dma.h"
 
+#ifdef EMSCRIPTEN
+#include <emscripten.h>
+#endif
+
 
 #if defined(OS2)
 #define INCL DOSFILEMGR
@@ -1494,6 +1498,63 @@ static void KEYB_ProgramStart(Program * * make) {
 	*make=new KEYB;
 }
 
+#ifdef EMSCRIPTEN
+class JS : public Program {
+public:
+        void Run(void);
+};
+
+
+void JS::Run(void) {
+	if (cmd->FindCommand(1,temp_line))
+	{
+		Bit16u handle;
+		std::string str = temp_line;
+		char * arg = new char[str.size()+1];
+		char * word;
+		std::copy(str.begin(), str.end(), arg);
+		arg[str.size()] = '\0';
+		word=StripWord(arg);
+		if (!DOS_OpenFile(word,0,&handle)) {
+			WriteOut(MSG_Get("SHELL_CMD_FILE_NOT_FOUND"),word);
+			return;
+		}
+		else
+		{
+			WriteOut("Loading file %s \n" , word);
+		}
+		
+		std::string script;
+		script += "try {\n";
+		script += "setTimeout(function() {\n";
+		static Bit8u buffer[0x8000]; // static, otherwise stack overflow possible.
+		bool	failed = false;
+		Bit16u	toread = 0x8000;
+		do {
+			failed |= DOS_ReadFile(handle,buffer,&toread);
+			script += std::string((char *)buffer);
+	//		failed |= DOS_WriteFile(targetHandle,buffer,&toread);
+		} while (toread==0x8000);
+		failed |= DOS_CloseFile(handle);
+		
+		script += "},0}\n";
+		script += "} catch (err) {};\n";
+		
+		try
+		{
+			emscripten_run_script(script.c_str());
+		} catch(...)
+		{
+			WriteOut("Error during execution of javascript");
+		}
+	}
+};
+
+static void JS_ProgramStart(Program * * make)
+{
+	*make=new JS;
+}
+#endif
 
 void DOS_SetupPrograms(void) {
 	/*Add Messages */
@@ -1722,4 +1783,7 @@ void DOS_SetupPrograms(void) {
 #endif
 	PROGRAMS_MakeFile("IMGMOUNT.COM", IMGMOUNT_ProgramStart);
 	PROGRAMS_MakeFile("KEYB.COM", KEYB_ProgramStart);
+#ifdef EMSCRIPTEN	
+	PROGRAMS_MakeFile("JS.COM", JS_ProgramStart);
+#endif
 }
