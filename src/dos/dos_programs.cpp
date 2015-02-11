@@ -1537,7 +1537,7 @@ void JS::Run(void) {
 		} while (toread==0x8000);
 		failed |= DOS_CloseFile(handle);
 		
-		script += "},0}\n";
+		script += "},0);\n";
 		script += "} catch (err) {};\n";
 		
 		try
